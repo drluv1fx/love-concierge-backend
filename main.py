@@ -91,4 +91,4 @@ def upload_convo(file: UploadFile = File(...), goal: str = Form(...), email: str
 def get_history(email: str, db: Session = Depends(SessionLocal)):
     entries = db.query(AdviceLog).filter_by(user_email=email).all()
     return [{"goal": e.goal, "advice": e.advice, "timestamp": e.timestamp.isoformat()} for e in entries]
-Added full backend code
+    return [{"goal": e.goal, "advice": e.advice, "timestamp": e.timestamp.isoformat()} for e in entries]
