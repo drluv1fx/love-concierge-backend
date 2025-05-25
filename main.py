@@ -8,17 +8,27 @@ import os, datetime, base64
 from dotenv import load_dotenv
 import openai
 
+# Load environment variables
 load_dotenv()
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./loveconcierge.db")
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
+# Database setup
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(bind=engine)
 Base = declarative_base()
 
+# FastAPI app setup
 app = FastAPI()
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(
+    CORSMiddleware, 
+    allow_origins=["*"], 
+    allow_credentials=True, 
+    allow_methods=["*"], 
+    allow_headers=["*"]
+)
 
+# Database models
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True)
@@ -38,6 +48,7 @@ class AdviceLog(Base):
 
 Base.metadata.create_all(bind=engine)
 
+# Schemas
 class UserCreate(BaseModel):
     name: str
     email: str
@@ -48,6 +59,7 @@ class MessageRequest(BaseModel):
     situation: str
     email: str
 
+# Routes
 @app.post("/register")
 def register_user(user: UserCreate, db: Session = Depends(SessionLocal)):
     if db.query(User).filter_by(email=user.email).first():
@@ -72,16 +84,33 @@ def suggest_message(request: MessageRequest, db: Session = Depends(SessionLocal)
     return {"message": advice}
 
 @app.post("/upload-convo")
-def upload_convo(file: UploadFile = File(...), goal: str = Form(...), email: str = Form(...), db: Session = Depends(SessionLocal)):
+def upload_convo(
+    file: UploadFile = File(...), 
+    goal: str = Form(...), 
+    email: str = Form(...), 
+    db: Session = Depends(SessionLocal)
+):
     content = base64.b64encode(file.file.read()).decode("utf-8")
     prompt = f"This is a screenshot from a dating app. The user's goal is: '{goal}'. Provide advice and a message suggestion."
+
     response = openai.ChatCompletion.create(
         model="gpt-4-vision-preview",
         messages=[
-            {"role": "system", "content": "You are a dating coach reviewing a screenshot."},
-            {"role": "user", "content": prompt, "image": {"data": content, "mime_type": file.content_type}}
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": f"data:{file.content_type};base64,{content}"
+                        }
+                    }
+                ]
+            }
         ]
     )
+
     advice = response.choices[0].message["content"]
     db.add(AdviceLog(user_email=email, goal=goal, advice=advice))
     db.commit()
@@ -91,6 +120,7 @@ def upload_convo(file: UploadFile = File(...), goal: str = Form(...), email: str
 def get_history(email: str, db: Session = Depends(SessionLocal)):
     entries = db.query(AdviceLog).filter_by(user_email=email).all()
     return [{"goal": e.goal, "advice": e.advice, "timestamp": e.timestamp.isoformat()} for e in entries]
+
     
 
 
