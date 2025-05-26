@@ -48,6 +48,10 @@ class MessageRequest(BaseModel):
     situation: str
     email: str
 
+@app.get("/")
+def read_root():
+    return {"msg": "Hello from Love Concierge Backend"}
+
 @app.post("/register")
 def register_user(user: UserCreate, db: Session = Depends(SessionLocal)):
     if db.query(User).filter_by(email=user.email).first():
@@ -79,7 +83,7 @@ def upload_convo(file: UploadFile = File(...), goal: str = Form(...), email: str
         model="gpt-4-vision-preview",
         messages=[
             {"role": "system", "content": "You are a dating coach reviewing a screenshot."},
-            {"role": "user", "content": prompt, "image": {"data": content, "mime_type": file.content_type}}
+            {"role": "user", "content": prompt}
         ]
     )
     advice = response.choices[0].message["content"]
@@ -91,8 +95,3 @@ def upload_convo(file: UploadFile = File(...), goal: str = Form(...), email: str
 def get_history(email: str, db: Session = Depends(SessionLocal)):
     entries = db.query(AdviceLog).filter_by(user_email=email).all()
     return [{"goal": e.goal, "advice": e.advice, "timestamp": e.timestamp.isoformat()} for e in entries]
-
-
-@app.get("/")
-def read_root():
-    return {"msg": "Hello from Love Concierge Backend"}
