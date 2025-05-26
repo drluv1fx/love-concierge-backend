@@ -92,6 +92,7 @@ def get_history(email: str, db: Session = Depends(SessionLocal)):
     entries = db.query(AdviceLog).filter_by(user_email=email).all()
     return [{"goal": e.goal, "advice": e.advice, "timestamp": e.timestamp.isoformat()} for e in entries]
 
+
 @app.get("/")
 def read_root():
     return {"msg": "Hello from Love Concierge Backend"}
