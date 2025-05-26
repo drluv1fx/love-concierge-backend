@@ -8,17 +8,37 @@ import os, datetime, base64
 from dotenv import load_dotenv
 import openai
 
+# Load environment variables
 load_dotenv()
+
+# Configuration
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./loveconcierge.db")
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
+# Database setup
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(bind=engine)
 Base = declarative_base()
 
+# App setup
 app = FastAPI()
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"]
+)
 
+# Dependency to get DB session
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+# Models
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True)
@@ -38,6 +58,7 @@ class AdviceLog(Base):
 
 Base.metadata.create_all(bind=engine)
 
+# Pydantic schemas
 class UserCreate(BaseModel):
     name: str
     email: str
@@ -48,12 +69,13 @@ class MessageRequest(BaseModel):
     situation: str
     email: str
 
+# Routes
 @app.get("/")
 def read_root():
     return {"msg": "Hello from Love Concierge Backend"}
 
 @app.post("/register")
-def register_user(user: UserCreate, db: Session = Depends(SessionLocal)):
+def register_user(user: UserCreate, db: Session = Depends(get_db)):
     if db.query(User).filter_by(email=user.email).first():
         raise HTTPException(status_code=400, detail="User already exists")
     db_user = User(**user.dict())
@@ -62,7 +84,7 @@ def register_user(user: UserCreate, db: Session = Depends(SessionLocal)):
     return {"msg": "User registered", "user": db_user.name}
 
 @app.post("/generate-message")
-def suggest_message(request: MessageRequest, db: Session = Depends(SessionLocal)):
+def suggest_message(request: MessageRequest, db: Session = Depends(get_db)):
     response = openai.ChatCompletion.create(
         model="gpt-4",
         messages=[
@@ -76,14 +98,19 @@ def suggest_message(request: MessageRequest, db: Session = Depends(SessionLocal)
     return {"message": advice}
 
 @app.post("/upload-convo")
-def upload_convo(file: UploadFile = File(...), goal: str = Form(...), email: str = Form(...), db: Session = Depends(SessionLocal)):
+def upload_convo(
+    file: UploadFile = File(...),
+    goal: str = Form(...),
+    email: str = Form(...),
+    db: Session = Depends(get_db)
+):
     content = base64.b64encode(file.file.read()).decode("utf-8")
     prompt = f"This is a screenshot from a dating app. The user's goal is: '{goal}'. Provide advice and a message suggestion."
     response = openai.ChatCompletion.create(
         model="gpt-4-vision-preview",
         messages=[
             {"role": "system", "content": "You are a dating coach reviewing a screenshot."},
-            {"role": "user", "content": prompt}
+            {"role": "user", "content": prompt, "image": {"data": content, "mime_type": file.content_type}}
         ]
     )
     advice = response.choices[0].message["content"]
@@ -92,6 +119,13 @@ def upload_convo(file: UploadFile = File(...), goal: str = Form(...), email: str
     return {"advice": advice}
 
 @app.get("/history/{email}")
-def get_history(email: str, db: Session = Depends(SessionLocal)):
+def get_history(email: str, db: Session = Depends(get_db)):
     entries = db.query(AdviceLog).filter_by(user_email=email).all()
-    return [{"goal": e.goal, "advice": e.advice, "timestamp": e.timestamp.isoformat()} for e in entries]
+    return [
+        {
+            "goal": e.goal,
+            "advice": e.advice,
+            "timestamp": e.timestamp.isoformat()
+        } for e in entries
+    ]
+
